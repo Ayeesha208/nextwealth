@@ -80,12 +80,15 @@ jobs:
           echo "⚙️ Configuring Nginx reverse proxy..."
           sudo bash -c 'cat > /etc/nginx/sites-available/default <<EOF
           server {
-              listen 80;
+              listen 80 default_server;
+              listen [::]:80 default_server;
+
+              root /var/www/html;
+              index index.html index.htm;
+
               server_name _;
 
               location / {
-                  root /var/www/html;
-                  index index.html;
                   try_files \$uri \$uri/ =404;
               }
 
@@ -98,8 +101,7 @@ jobs:
           EOF'
 
           echo "🔄 Restarting Nginx..."
-          sudo nginx -t
-          sudo systemctl restart nginx
+          sudo nginx -t && sudo systemctl restart nginx
           sudo systemctl status nginx || true
 
           echo "🧹 Cleaning up..."
