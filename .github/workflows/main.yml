@@ -57,7 +57,7 @@ jobs:
 
           echo "🛠️ Installing Python & Nginx..."
           sudo apt update
-          sudo apt install python3 python3-pip python3-venv nginx -y
+          sudo apt install -y python3 python3-pip python3-venv nginx unzip
 
           echo "🐍 Creating virtual environment..."
           python3 -m venv ~/fullstack-app/venv
@@ -72,17 +72,21 @@ jobs:
           nohup ~/fullstack-app/venv/bin/gunicorn -w 3 -b 127.0.0.1:5000 Automation_Test-main.CI_CD_DummyCode.backend.app:app --chdir ~/fullstack-app > ~/gunicorn.log 2>&1 &
 
           echo "🌐 Deploying frontend to Nginx..."
+          sudo mkdir -p /var/www/html/
           sudo cp -r ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/frontend/* /var/www/html/
+          sudo chmod -R 755 /var/www/html
+          sudo chown -R www-data:www-data /var/www/html
 
           echo "⚙️ Configuring Nginx reverse proxy..."
           sudo bash -c 'cat > /etc/nginx/sites-available/default <<EOF
           server {
               listen 80;
-              server_name localhost;
+              server_name _;
 
               location / {
                   root /var/www/html;
                   index index.html;
+                  try_files \$uri \$uri/ =404;
               }
 
               location /api/ {
@@ -94,6 +98,7 @@ jobs:
           EOF'
 
           echo "🔄 Restarting Nginx..."
+          sudo nginx -t
           sudo systemctl restart nginx
           sudo systemctl status nginx || true
 
@@ -108,4 +113,4 @@ jobs:
     - name: Smoke Test (Check Frontend)
       run: |
         echo "🌐 Running smoke test..."
-        curl --fail --retry 5 --retry-delay 3 http://${{ secrets.SERVER_IP }}/ || exit 1
+        curl -v --fail --retry 5 --retry-delay 3 http://${{ secrets.SERVER_IP }}/ || exit 1
