@@ -56,13 +56,13 @@ jobs:
           echo "🐍 Setting up Python environment..."
           cd ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/backend
           python3 -m venv venv
-          source venv/bin/activate
+          . venv/bin/activate
           pip install --upgrade pip
           pip install flask flask-cors
 
           echo "🚀 Starting Flask backend in background..."
           pkill -f "python app.py" || true
-          nohup bash -c "source venv/bin/activate && python app.py" > ~/backend.log 2>&1 &
+          nohup bash -c '. venv/bin/activate && python app.py' > ~/backend.log 2>&1 &
 
           echo "🌐 Deploying frontend to Nginx..."
           sudo mkdir -p /var/www/html/
