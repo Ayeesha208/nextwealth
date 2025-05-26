@@ -5,31 +5,38 @@ on:
     branches:
       - main
 
+
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: 🔄 Checkout code
+    - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: 📁 List directory for debug
-      run: ls -R
-
-    - name: 🐍 Python Syntax Check (Backend)
-      run: python3 -m py_compile Automation_Test-main/CI_CD_DummyCode/backend/app.py
-
-    - name: 📦 Create ZIP Artifact
+    - name: List directory for debug
       run: |
+        echo "📂 Listing project files..."
+        ls -R
+
+    - name: Python Syntax Check (Backend)
+      run: |
+        echo "🔍 Running Python syntax checks..."
+        python3 -m py_compile Automation_Test-main/CI_CD_DummyCode/backend/app.py
+
+    - name: Create ZIP Artifact
+      run: |
+        echo "📦 Creating ZIP build artifact..."
         zip -r fullstack-app-build.zip Automation_Test-main/CI_CD_DummyCode -x "*.git*" "*.github*"
 
-    - name: ⬆️ Upload to JFrog Artifactory
+    - name: Upload to JFrog Artifactory
       run: |
+        echo "⬆️ Uploading to JFrog Artifactory..."
         curl -H "X-JFrog-Art-Api: ${{ secrets.ARTIFACTORY_API_KEY }}" \
              -T fullstack-app-build.zip \
              "${{ secrets.ARTIFACTORY_URL }}/${{ secrets.ARTIFACTORY_REPO }}/fullstack-app/fullstack-app-build-${{ github.run_number }}.zip"
 
-    - name: 📤 SCP ZIP to Azure VM
+    - name: SCP ZIP to Azure VM
       uses: appleboy/scp-action@v0.1.3
       with:
         host: ${{ secrets.SERVER_IP }}
@@ -38,34 +45,32 @@ jobs:
         source: "fullstack-app-build.zip"
         target: "~/" 
 
-    - name: 🚀 SSH Deploy to Azure VM
+    - name: SSH Deploy ZIP to Web Directory (Nginx + Gunicorn)
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.SERVER_IP }}
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_KEY }}
         script: |
-          echo "📦 Unzipping build artifact..."
+          echo "📦 Unzipping artifact..."
           rm -rf ~/fullstack-app && mkdir -p ~/fullstack-app
           unzip -o ~/fullstack-app-build.zip -d ~/fullstack-app
 
-          echo "🛠️ Installing Python and Nginx..."
-          sudo apt-get update
-          sudo apt-get install -y python3-venv python-is-python3 nginx unzip tmux
+          echo "🛠️ Installing Python & Nginx..."
+          sudo apt update
+          sudo apt install -y python3 python3-pip python3-venv nginx unzip
 
-          echo "🐍 Setting up Python environment..."
-          cd ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/backend
-          python3 -m venv venv
-          # Activate venv and install packages in the same shell command
-          . venv/bin/activate && pip install --upgrade pip && pip install flask flask-cors
+          echo "🐍 Creating virtual environment..."
+          python3 -m venv ~/fullstack-app/venv
+          source ~/fullstack-app/venv/bin/activate
 
-          echo "🚀 Starting Flask backend in tmux session..."
-          # Kill any existing app.py process and tmux session
-          pkill -f "python app.py" || true
-          tmux kill-session -t flask_session || true
-          
-          # Start tmux session with venv activated
-          tmux new-session -d -s flask_session "cd ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/backend && . venv/bin/activate && python app.py"
+          echo "📦 Installing backend dependencies..."
+          ~/fullstack-app/venv/bin/pip install --upgrade pip
+          ~/fullstack-app/venv/bin/pip install -r ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/requirements.txt
+
+          echo "🚀 Starting Gunicorn backend..."
+          pkill gunicorn || true
+          nohup ~/fullstack-app/venv/bin/gunicorn -w 3 -b 127.0.0.1:5000 Automation_Test-main.CI_CD_DummyCode.backend.app:app --chdir ~/fullstack-app > ~/gunicorn.log 2>&1 &
 
           echo "🌐 Deploying frontend to Nginx..."
           sudo mkdir -p /var/www/html/
@@ -73,14 +78,14 @@ jobs:
           sudo chmod -R 755 /var/www/html
           sudo chown -R www-data:www-data /var/www/html
 
-          echo "⚙️ Configuring Nginx to reverse proxy to backend..."
+          echo "⚙️ Configuring Nginx reverse proxy..."
           sudo bash -c 'cat > /etc/nginx/sites-available/default <<EOF
           server {
               listen 80 default_server;
               listen [::]:80 default_server;
 
               root /var/www/html;
-              index index.html;
+              index index.html index.htm;
 
               server_name _;
 
@@ -96,16 +101,19 @@ jobs:
           }
           EOF'
 
-          echo "🔁 Restarting Nginx..."
+          echo "🔄 Restarting Nginx..."
           sudo nginx -t && sudo systemctl restart nginx
           sudo systemctl status nginx || true
 
           echo "🧹 Cleaning up..."
           rm ~/fullstack-app-build.zip
 
-    - name: ⏳ Wait for Nginx to stabilize
-      run: sleep 10
-
-    - name: 🔎 Smoke Test (Frontend)
+    - name: Wait for Nginx to stabilize
       run: |
+        echo "⏳ Waiting for web server to stabilize..."
+        sleep 10
+
+    - name: Smoke Test (Check Frontend)
+      run: |
+        echo "🌐 Running smoke test..."
         curl -v --fail --retry 5 --retry-delay 3 http://${{ secrets.SERVER_IP }}/ || exit 1
