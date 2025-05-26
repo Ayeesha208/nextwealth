@@ -50,8 +50,8 @@ jobs:
           unzip -o ~/fullstack-app-build.zip -d ~/fullstack-app
 
           echo "🛠️ Installing Python and Nginx..."
-          sudo apt update
-          sudo apt install -y python3-venv python-is-python3 nginx unzip
+          sudo apt-get update
+          sudo apt-get install -y python3-venv python-is-python3 nginx unzip
 
           echo "🐍 Setting up Python environment..."
           cd ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/backend
