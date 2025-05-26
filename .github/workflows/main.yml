@@ -77,7 +77,7 @@ jobs:
           sleep 10
     
           echo "🌐 Running smoke test on backend..."
-          curl --fail http://localhost:5000 || exit 1
+          curl --fail http://20.121.56.25:5000 || exit 1
 
           echo "🌐 Deploying frontend to Nginx..."
           sudo mkdir -p /var/www/html/
