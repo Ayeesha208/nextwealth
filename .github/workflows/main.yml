@@ -10,107 +10,98 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: 🔄 Checkout code
+      uses: actions/checkout@v3
 
-      - name: List directory for debug
-        run: |
-          echo "📂 Listing project files..."
-          ls -R
+    - name: 📁 List directory for debug
+      run: ls -R
 
-      - name: Python Syntax Check (Backend)
-        run: |
-          echo "🔍 Running Python syntax checks..."
-          python3 -m py_compile Automation_Test-main/CI_CD_DummyCode/backend/app.py
+    - name: 🐍 Python Syntax Check (Backend)
+      run: python3 -m py_compile Automation_Test-main/CI_CD_DummyCode/backend/app.py
 
-      - name: Create ZIP Artifact
-        run: |
-          echo "📦 Creating ZIP build artifact..."
-          zip -r fullstack-app-build.zip Automation_Test-main/CI_CD_DummyCode -x "*.git*" "*.github*"
+    - name: 📦 Create ZIP Artifact
+      run: |
+        zip -r fullstack-app-build.zip Automation_Test-main/CI_CD_DummyCode -x "*.git*" "*.github*"
 
-      - name: Upload to JFrog Artifactory
-        run: |
-          echo "⬆️ Uploading to JFrog Artifactory..."
-          curl -H "X-JFrog-Art-Api: ${{ secrets.ARTIFACTORY_API_KEY }}" \
-               -T fullstack-app-build.zip \
-               "${{ secrets.ARTIFACTORY_URL }}/${{ secrets.ARTIFACTORY_REPO }}/fullstack-app/fullstack-app-build-${{ github.run_number }}.zip"
+    - name: ⬆️ Upload to JFrog Artifactory
+      run: |
+        curl -H "X-JFrog-Art-Api: ${{ secrets.ARTIFACTORY_API_KEY }}" \
+             -T fullstack-app-build.zip \
+             "${{ secrets.ARTIFACTORY_URL }}/${{ secrets.ARTIFACTORY_REPO }}/fullstack-app/fullstack-app-build-${{ github.run_number }}.zip"
 
-      - name: SCP ZIP to Azure VM
-        uses: appleboy/scp-action@v0.1.3
-        with:
-          host: ${{ secrets.SERVER_IP }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          source: "fullstack-app-build.zip"
-          target: "~/" 
+    - name: 📤 SCP ZIP to Azure VM
+      uses: appleboy/scp-action@v0.1.3
+      with:
+        host: ${{ secrets.SERVER_IP }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        source: "fullstack-app-build.zip"
+        target: "~/" 
 
-      - name: SSH Deploy ZIP to Web Directory (Nginx + Flask)
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.SERVER_IP }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            echo "📦 Unzipping artifact..."
-            rm -rf ~/fullstack-app && mkdir -p ~/fullstack-app
-            unzip -o ~/fullstack-app-build.zip -d ~/fullstack-app
+    - name: 🚀 SSH Deploy to Azure VM
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.SERVER_IP }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        script: |
+          echo "📦 Unzipping build artifact..."
+          rm -rf ~/fullstack-app && mkdir -p ~/fullstack-app
+          unzip -o ~/fullstack-app-build.zip -d ~/fullstack-app
 
-            echo "🛠️ Installing Python & Nginx..."
-            sudo apt update
-            sudo apt install -y python3 python3-pip python3-venv nginx unzip
+          echo "🛠️ Installing Python and Nginx..."
+          sudo apt update
+          sudo apt install -y python3-venv python-is-python3 nginx unzip
 
-            echo "🐍 Setting up Python environment..."
-            cd ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/backend
-            python3 -m venv venv
-            source venv/bin/activate
-            pip install flask flask-cors
+          echo "🐍 Setting up Python environment..."
+          cd ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/backend
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install flask flask-cors
 
-            echo "🚀 Starting Flask backend in background..."
-            pkill -f "python app.py" || true
-            nohup bash -c "source venv/bin/activate && python app.py" > ~/backend.log 2>&1 &
+          echo "🚀 Starting Flask backend in background..."
+          pkill -f "python app.py" || true
+          nohup bash -c "source venv/bin/activate && python app.py" > ~/backend.log 2>&1 &
 
-            echo "🌐 Deploying frontend to Nginx..."
-            sudo mkdir -p /var/www/html/
-            sudo cp -r ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/frontend/* /var/www/html/
-            sudo chmod -R 755 /var/www/html
-            sudo chown -R www-data:www-data /var/www/html
+          echo "🌐 Deploying frontend to Nginx..."
+          sudo mkdir -p /var/www/html/
+          sudo cp -r ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/frontend/* /var/www/html/
+          sudo chmod -R 755 /var/www/html
+          sudo chown -R www-data:www-data /var/www/html
 
-            echo "⚙️ Configuring Nginx reverse proxy..."
-            sudo bash -c 'cat > /etc/nginx/sites-available/default <<EOF
-            server {
-                listen 80 default_server;
-                listen [::]:80 default_server;
+          echo "⚙️ Configuring Nginx to reverse proxy to backend..."
+          sudo bash -c 'cat > /etc/nginx/sites-available/default <<EOF
+          server {
+              listen 80 default_server;
+              listen [::]:80 default_server;
 
-                root /var/www/html;
-                index index.html index.htm;
+              root /var/www/html;
+              index index.html;
 
-                server_name _;
+              server_name _;
 
-                location / {
-                    try_files \$uri \$uri/ =404;
-                }
+              location / {
+                  try_files \$uri \$uri/ =404;
+              }
 
-                location /api/ {
-                    proxy_pass http://127.0.0.1:5000/;
-                    proxy_set_header Host \$host;
-                    proxy_set_header X-Real-IP \$remote_addr;
-                }
-            }
-EOF'
+              location /api/ {
+                  proxy_pass http://127.0.0.1:5000/;
+                  proxy_set_header Host \$host;
+                  proxy_set_header X-Real-IP \$remote_addr;
+              }
+          }
+          EOF'
 
-            echo "🔄 Restarting Nginx..."
-            sudo nginx -t && sudo systemctl restart nginx
-            sudo systemctl status nginx || true
+          echo "🔁 Restarting Nginx..."
+          sudo nginx -t && sudo systemctl restart nginx
+          sudo systemctl status nginx || true
 
-            echo "🧹 Cleaning up..."
-            rm ~/fullstack-app-build.zip
+          echo "🧹 Cleaning up..."
+          rm ~/fullstack-app-build.zip
 
-      - name: Wait for Nginx to stabilize
-        run: |
-          echo "⏳ Waiting for web server to stabilize..."
-          sleep 10
+    - name: ⏳ Wait for Nginx to stabilize
+      run: sleep 10
 
-      - name: Smoke Test (Check Frontend)
-        run: |
-          echo "🌐 Running smoke test..."
-          curl -v --fail --retry 5 --retry-delay 3 http://${{ secrets.SERVER_IP }}/ || exit 1
+    - name: 🔎 Smoke Test (Frontend)
+      run: |
+        curl -v --fail --retry 5 --retry-delay 3 http://${{ secrets.SERVER_IP }}/ || exit 1
