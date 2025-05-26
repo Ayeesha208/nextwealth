@@ -56,13 +56,15 @@ jobs:
           echo "🐍 Setting up Python environment..."
           cd ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/backend
           python3 -m venv venv
-          . venv/bin/activate
-          pip install --upgrade pip
-          pip install flask flask-cors
+          # Activate venv and install packages in the same shell command
+          . venv/bin/activate && pip install --upgrade pip && pip install flask flask-cors
 
           echo "🚀 Starting Flask backend in tmux session..."
+          # Kill any existing app.py process and tmux session
           pkill -f "python app.py" || true
           tmux kill-session -t flask_session || true
+          
+          # Start tmux session with venv activated
           tmux new-session -d -s flask_session "cd ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/backend && . venv/bin/activate && python app.py"
 
           echo "🌐 Deploying frontend to Nginx..."
