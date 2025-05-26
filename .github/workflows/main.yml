@@ -51,6 +51,7 @@ jobs:
         host: ${{ secrets.SERVER_IP }}
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_KEY }}
+        timeout: 300   # 5 minutes
         script: |
           echo "📦 Unzipping artifact..."
           rm -rf ~/fullstack-app && mkdir -p ~/fullstack-app
@@ -73,12 +74,8 @@ jobs:
           echo "🚀 Starting Flask backend app in background..."
           pkill -f "python app.py" || true
           # Use setsid to fully detach
-          setsid python app.py > backend.log 2>&1 < /dev/null &
+          nohup setsid python app.py > backend.log 2>&1 < /dev/null &
           
-          sleep 5
-          pgrep -fl python
-          tail -n 10 backend.log
-    
           echo "⏳ Waiting for backend to start..."
           sleep 10
     
