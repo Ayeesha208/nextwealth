@@ -68,7 +68,7 @@ jobs:
           echo "🚀 Running Flask backend in background..."
           pkill -f "venv/bin/python app.py" || true
           nohup venv/bin/python app.py > backend.log 2>&1 &
-          sleep 10  # Give Flask time to start
+          disown
 
           echo "🌐 Deploying frontend to Nginx..."
           sudo mkdir -p /var/www/html/
