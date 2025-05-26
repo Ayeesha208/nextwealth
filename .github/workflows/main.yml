@@ -57,6 +57,7 @@ jobs:
           cd ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/backend
           python3 -m venv venv
           source venv/bin/activate
+          pip install --upgrade pip
           pip install flask flask-cors
 
           echo "🚀 Starting Flask backend in background..."
