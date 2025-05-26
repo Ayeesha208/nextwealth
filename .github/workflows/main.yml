@@ -5,6 +5,7 @@ on:
     branches:
       - main
 
+
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
@@ -44,7 +45,7 @@ jobs:
         source: "fullstack-app-build.zip"
         target: "~/" 
 
-    - name: SSH Deploy ZIP to Web Directory (Nginx + Flask)
+    - name: SSH Deploy ZIP to Web Directory (Nginx + Gunicorn)
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.SERVER_IP }}
@@ -55,20 +56,28 @@ jobs:
           rm -rf ~/fullstack-app && mkdir -p ~/fullstack-app
           unzip -o ~/fullstack-app-build.zip -d ~/fullstack-app
 
-          echo "🛠️ Installing dependencies..."
+          echo "🛠️ Installing Python & Nginx..."
           sudo apt update
           sudo apt install -y python3 python3-pip python3-venv nginx unzip
 
-          echo "🐍 Setting up Python venv and installing Flask..."
           cd ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/backend
+
+          echo "🐍 Creating virtual environment and activating..."
           python3 -m venv venv
           source venv/bin/activate
-          pip install flask flask-cors
 
-          echo "🚀 Running Flask backend in background..."
-          pkill -f "venv/bin/python app.py" || true
-          nohup venv/bin/python app.py > backend.log 2>&1 &
-          disown
+          echo "📦 Upgrading pip and installing dependencies..."
+          pip install --upgrade pip
+          pip install -r requirements.txt
+    
+          echo "🚀 Starting Flask backend app in background..."
+          nohup python app.py > backend.log 2>&1 &
+    
+          echo "⏳ Waiting for backend to start..."
+          sleep 10
+    
+          echo "🌐 Running smoke test on backend..."
+          curl --fail http://localhost:5000 || exit 1
 
           echo "🌐 Deploying frontend to Nginx..."
           sudo mkdir -p /var/www/html/
@@ -106,9 +115,9 @@ jobs:
           echo "🧹 Cleaning up..."
           rm ~/fullstack-app-build.zip
 
-    - name: Wait for Nginx and Flask to stabilize
+    - name: Wait for Nginx to stabilize
       run: |
-        echo "⏳ Waiting for web and backend services to stabilize..."
+        echo "⏳ Waiting for web server to stabilize..."
         sleep 10
 
     - name: Smoke Test (Check Frontend)
