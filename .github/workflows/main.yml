@@ -51,7 +51,7 @@ jobs:
 
           echo "🛠️ Installing Python and Nginx..."
           sudo apt-get update
-          sudo apt-get install -y python3-venv python-is-python3 nginx unzip
+          sudo apt-get install -y python3-venv python-is-python3 nginx unzip tmux
 
           echo "🐍 Setting up Python environment..."
           cd ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/backend
@@ -60,9 +60,10 @@ jobs:
           pip install --upgrade pip
           pip install flask flask-cors
 
-          echo "🚀 Starting Flask backend in background..."
+          echo "🚀 Starting Flask backend in tmux session..."
           pkill -f "python app.py" || true
-          nohup bash -c '. venv/bin/activate && python app.py' > ~/backend.log 2>&1 &
+          tmux kill-session -t flask_session || true
+          tmux new-session -d -s flask_session "cd ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/backend && . venv/bin/activate && python app.py"
 
           echo "🌐 Deploying frontend to Nginx..."
           sudo mkdir -p /var/www/html/
