@@ -71,6 +71,7 @@ jobs:
           pip install -r requirements.txt
     
           echo "🚀 Starting Flask backend app in background..."
+          pkill -f "python app.py" || true
           nohup python app.py > backend.log 2>&1 &
     
           echo "⏳ Waiting for backend to start..."
