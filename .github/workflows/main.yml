@@ -49,12 +49,11 @@ jobs:
 
             echo "📁 Checking deployment directory..."
 
-            # Define target directory
             REPO_DIR=~/nextwealth
 
-            # If directory doesn’t exist, clone fresh
+            # Clone repo if not present
             if [ ! -d "$REPO_DIR/.git" ]; then
-              echo "📥 Cloning repository for the first time..."
+              echo "📥 Cloning repository..."
               rm -rf "$REPO_DIR"
               git clone https://github.com/Ayeesha208/nextwealth.git "$REPO_DIR"
             else
@@ -65,20 +64,25 @@ jobs:
               git pull
             fi
 
+            # Backend setup
             cd "$REPO_DIR/Automation_Test-main/CI_CD_DummyCode/backend"
 
-            echo "🐍 Setting up Python virtual environment..."
+            echo "🛠 Installing dependencies..."
+            sudo apt update
+            sudo apt install python-is-python3 -y
+            sudo apt install python3-venv -y
             python3 -m venv venv
             source venv/bin/activate
-            pip install -r ../../requirements.txt
+            pip install flask flask-cors
 
-            echo "🛑 Stopping existing backend..."
+            echo "🛑 Stopping previous backend..."
             pkill -f app.py || true
 
             echo "🚀 Starting backend..."
             nohup python3 app.py > backend.log 2>&1 &
 
-            echo "🌐 Starting frontend server..."
+            # Frontend setup
+            echo "🌐 Starting frontend..."
             cd ../frontend
             nohup python3 -m http.server 8080 > frontend.log 2>&1 &
           EOF
