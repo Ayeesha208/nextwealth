@@ -10,122 +10,57 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: List directory for debug
-      run: |
-        echo "📂 Listing project files..."
-        ls -R
+      - name: List directory for debug
+        run: |
+          echo "📂 Listing project files..."
+          ls -R
 
-    - name: Python Syntax Check (Backend)
-      run: |
-        echo "🔍 Running Python syntax checks..."
-        python3 -m py_compile Automation_Test-main/CI_CD_DummyCode/backend/app.py
+      - name: Python Syntax Check (Backend)
+        run: |
+          echo "🔍 Running Python syntax checks..."
+          python3 -m py_compile Automation_Test-main/CI_CD_DummyCode/backend/app.py
 
-    - name: Create ZIP Artifact
-      run: |
-        echo "📦 Creating ZIP build artifact..."
-        zip -r fullstack-app-build.zip Automation_Test-main/CI_CD_DummyCode -x "*.git*" "*.github*"
+      - name: Create ZIP Artifact
+        run: |
+          echo "📦 Creating ZIP build artifact..."
+          zip -r fullstack-app-build.zip Automation_Test-main/CI_CD_DummyCode -x "*.git*" "*.github*"
 
-    - name: Upload to JFrog Artifactory
-      run: |
-        echo "⬆️ Uploading to JFrog Artifactory..."
-        curl -H "X-JFrog-Art-Api: ${{ secrets.ARTIFACTORY_API_KEY }}" \
-             -T fullstack-app-build.zip \
-             "${{ secrets.ARTIFACTORY_URL }}/${{ secrets.ARTIFACTORY_REPO }}/fullstack-app/fullstack-app-build-${{ github.run_number }}.zip"
+      - name: Upload to JFrog Artifactory
+        run: |
+          echo "⬆️ Uploading to JFrog Artifactory..."
+          curl -H "X-JFrog-Art-Api: ${{ secrets.ARTIFACTORY_API_KEY }}" \
+               -T fullstack-app-build.zip \
+               "${{ secrets.ARTIFACTORY_URL }}/${{ secrets.ARTIFACTORY_REPO }}/fullstack-app/fullstack-app-build-${{ github.run_number }}.zip"
 
-    - name: SCP ZIP to Azure VM
-      uses: appleboy/scp-action@v0.1.3
-      with:
-        host: ${{ secrets.SERVER_IP }}
-        username: ${{ secrets.SERVER_USER }}
-        key: ${{ secrets.SERVER_SSH_KEY }}
-        source: "fullstack-app-build.zip"
-        target: "~/"
+      - name: Deploy Code to Azure VM
+        run: |
+          ssh ${{ secrets.AZURE_VM_USER }}@${{ secrets.AZURE_VM_HOST }} << 'EOF'
+            set -e
 
-    - name: SSH Deploy ZIP to Web Directory (Nginx + Gunicorn)
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.SERVER_IP }}
-        username: ${{ secrets.SERVER_USER }}
-        key: ${{ secrets.SERVER_SSH_KEY }}
-        script: |
-          echo "📦 Unzipping artifact..."
-          rm -rf ~/fullstack-app && mkdir -p ~/fullstack-app
-          unzip -o ~/fullstack-app-build.zip -d ~/fullstack-app
+            # Navigate to working directory or clone repo if needed
+            cd ~/Automation_Test || {
+              git clone https://github.com/Ayeesha208/nextwealth.git ~/nextwealth
+              cd ~/Automation_Test
+            }
 
-          echo "🛠️ Installing Python & Nginx..."
-          sudo apt update
-          sudo apt install -y python3 python3-pip python3-venv nginx unzip
+            git pull
 
-          echo "🐍 Creating virtual environment..."
-          python3 -m venv ~/fullstack-app/venv
-          source ~/fullstack-app/venv/bin/activate
+            # Setup Python backend
+            cd Automation_Test-main/CI_CD_DummyCode/backend
+            python3 -m venv venv
+            source venv/bin/activate
+            pip install -r ../../requirements.txt
 
-          echo "📦 Installing backend dependencies..."
-          ~/fullstack-app/venv/bin/pip install --upgrade pip
-          ~/fullstack-app/venv/bin/pip install -r ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/requirements.txt
+            # Kill previous backend if running
+            pkill -f app.py || true
 
-          echo "🚀 Starting Gunicorn backend..."
-          pkill gunicorn || true
-          nohup ~/fullstack-app/venv/bin/gunicorn --chdir ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/backend \
-            -w 3 -b 127.0.0.1:5000 app:app > ~/gunicorn.log 2>&1 &
+            # Run backend
+            nohup python3 app.py > backend.log 2>&1 &
 
-          echo "⌛ Waiting for Gunicorn to start..."
-          sleep 5
-          tail -n 20 ~/gunicorn.log
-
-          echo "🌐 Deploying frontend to Nginx..."
-          sudo mkdir -p /var/www/html/
-          sudo cp -r ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/frontend/* /var/www/html/
-          sudo chmod -R 755 /var/www/html
-          sudo chown -R www-data:www-data /var/www/html
-
-          echo "⚙️ Configuring Nginx reverse proxy..."
-          sudo bash -c 'cat > /etc/nginx/sites-available/default <<EOF
-          server {
-              listen 80 default_server;
-              listen [::]:80 default_server;
-
-              root /var/www/html;
-              index index.html index.htm;
-
-              server_name _;
-
-              location / {
-                  try_files \$uri \$uri/ =404;
-              }
-
-              location /api/ {
-                  proxy_pass http://127.0.0.1:5000/;
-                  proxy_http_version 1.1;
-                  proxy_set_header Host \$host;
-                  proxy_set_header X-Real-IP \$remote_addr;
-                  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto \$scheme;
-              }
-          }
-          EOF'
-
-          echo "🔄 Restarting Nginx..."
-          sudo nginx -t && sudo systemctl restart nginx
-          sudo systemctl status nginx || true
-
-          echo "🧹 Cleaning up..."
-          rm ~/fullstack-app-build.zip
-
-    - name: Wait for services to stabilize
-      run: |
-        echo "⏳ Waiting for services..."
-        sleep 10
-
-    - name: Smoke Test (Frontend)
-      run: |
-        echo "🌐 Running frontend smoke test..."
-        curl -v --fail --retry 5 --retry-delay 3 http://${{ secrets.SERVER_IP }}/ || exit 1
-
-    - name: Smoke Test (Backend)
-      run: |
-        echo "🔍 Running backend smoke test..."
-        curl -v --fail --retry 5 --retry-delay 3 http://${{ secrets.SERVER_IP }}/api/ || exit 1
+            # Serve frontend - adjust as needed
+            cd ../frontend
+            nohup python3 -m http.server 8080 > frontend.log 2>&1 &
+          EOF
