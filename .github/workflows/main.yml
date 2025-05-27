@@ -37,7 +37,7 @@ jobs:
 
       - name: Deploy Code to Azure VM
         run: |
-          ssh ${{ secrets.AZURE_VM_USER }}@${{ secrets.AZURE_VM_HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no ${{ secrets.AZURE_VM_USER }}@${{ secrets.AZURE_VM_HOST }} << 'EOF'
             set -e
 
             # Navigate to working directory or clone repo if needed
