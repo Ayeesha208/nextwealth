@@ -40,34 +40,45 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts      
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
 
       - name: Deploy Code to Azure VM
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
             set -e
 
-            # Navigate to working directory or clone repo if needed
-            cd ~/Automation_Test || {
-              git clone https://github.com/Ayeesha208/nextwealth.git ~/nextwealth
-              cd ~/Automation_Test
-            }
+            echo "📁 Checking deployment directory..."
 
+            # Use consistent directory name
+            REPO_DIR=~/nextwealth
+
+            # Clone if not exists
+            if [ ! -d "$REPO_DIR/.git" ]; then
+              echo "📥 Cloning repository..."
+              rm -rf "$REPO_DIR"
+              git clone https://github.com/Ayeesha208/nextwealth.git "$REPO_DIR"
+            fi
+
+            # Enter repo and pull latest changes
+            cd "$REPO_DIR"
             git pull
 
-            # Setup Python backend
+            echo "🚀 Deploying backend..."
             cd Automation_Test-main/CI_CD_DummyCode/backend
+
             python3 -m venv venv
             source venv/bin/activate
             pip install -r ../../requirements.txt
 
-            # Kill previous backend if running
+            # Kill previous backend
             pkill -f app.py || true
 
-            # Run backend
+            # Start backend
             nohup python3 app.py > backend.log 2>&1 &
 
-            # Serve frontend - adjust as needed
+            echo "🌐 Deploying frontend..."
             cd ../frontend
+
+            # Start frontend (adjust port if needed)
             nohup python3 -m http.server 8080 > frontend.log 2>&1 &
           EOF
