@@ -42,9 +42,9 @@ jobs:
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_KEY }}
         source: "fullstack-app-build.zip"
-        target: "~/" 
+        target: "~/"
 
-    - name: SSH Deploy ZIP to Web Directory (Nginx + Gunicorn + Persistent Backend)
+    - name: SSH Deploy ZIP to Web Directory (Nginx + Gunicorn)
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.SERVER_IP }}
@@ -67,29 +67,15 @@ jobs:
           ~/fullstack-app/venv/bin/pip install --upgrade pip
           ~/fullstack-app/venv/bin/pip install -r ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/requirements.txt
 
-          echo "🚀 Setting up Gunicorn systemd service..."
-          sudo bash -c 'cat > /etc/systemd/system/fullstack-backend.service <<EOF
-          [Unit]
-          Description=Gunicorn instance to serve Fullstack Backend
-          After=network.target
+          echo "🚀 Starting Gunicorn backend..."
+          pkill gunicorn || true
+          nohup ~/fullstack-app/venv/bin/gunicorn -w 3 -b 127.0.0.1:5000 app:app \
+            --chdir ~/fullstack-app/Automation_Test-main/CI_CD_DummyCode/backend \
+            > ~/gunicorn.log 2>&1 &
 
-          [Service]
-          User=${USER}
-          Group=www-data
-          WorkingDirectory=/home/${USER}/fullstack-app
-          Environment="PATH=/home/${USER}/fullstack-app/venv/bin"
-          ExecStart=/home/${USER}/fullstack-app/venv/bin/gunicorn -w 3 -b 127.0.0.1:5000 Automation_Test-main.CI_CD_DummyCode.backend.app:app
-
-          [Install]
-          WantedBy=multi-user.target
-          EOF'
-
-          echo "🔄 Restarting Gunicorn service..."
-          sudo systemctl daemon-reexec
-          sudo systemctl daemon-reload
-          sudo systemctl enable fullstack-backend.service
-          sudo systemctl restart fullstack-backend.service
-          sudo systemctl status fullstack-backend.service || true
+          sleep 5
+          echo "📄 Gunicorn log (tail):"
+          tail -n 20 ~/gunicorn.log
 
           echo "🌐 Deploying frontend to Nginx..."
           sudo mkdir -p /var/www/html/
@@ -134,7 +120,7 @@ jobs:
 
     - name: Smoke Test (Check Frontend)
       run: |
-        echo "🌐 Running smoke test..."
+        echo "🌐 Running frontend smoke test..."
         curl -v --fail --retry 5 --retry-delay 3 http://${{ secrets.SERVER_IP }}/ || exit 1
 
     - name: Smoke Test (Check Backend)
