@@ -49,36 +49,36 @@ jobs:
 
             echo "📁 Checking deployment directory..."
 
-            # Use consistent directory name
+            # Define target directory
             REPO_DIR=~/nextwealth
 
-            # Clone if not exists
+            # If directory doesn’t exist, clone fresh
             if [ ! -d "$REPO_DIR/.git" ]; then
-              echo "📥 Cloning repository..."
+              echo "📥 Cloning repository for the first time..."
               rm -rf "$REPO_DIR"
               git clone https://github.com/Ayeesha208/nextwealth.git "$REPO_DIR"
+            else
+              echo "🔁 Resetting repository and pulling latest changes..."
+              cd "$REPO_DIR"
+              git reset --hard HEAD
+              git clean -fd
+              git pull
             fi
 
-            # Enter repo and pull latest changes
-            cd "$REPO_DIR"
-            git pull
+            cd "$REPO_DIR/Automation_Test-main/CI_CD_DummyCode/backend"
 
-            echo "🚀 Deploying backend..."
-            cd Automation_Test-main/CI_CD_DummyCode/backend
-
+            echo "🐍 Setting up Python virtual environment..."
             python3 -m venv venv
             source venv/bin/activate
             pip install -r ../../requirements.txt
 
-            # Kill previous backend
+            echo "🛑 Stopping existing backend..."
             pkill -f app.py || true
 
-            # Start backend
+            echo "🚀 Starting backend..."
             nohup python3 app.py > backend.log 2>&1 &
 
-            echo "🌐 Deploying frontend..."
+            echo "🌐 Starting frontend server..."
             cd ../frontend
-
-            # Start frontend (adjust port if needed)
             nohup python3 -m http.server 8080 > frontend.log 2>&1 &
           EOF
